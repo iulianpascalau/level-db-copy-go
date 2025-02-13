@@ -3,6 +3,8 @@ package level_db_copy
 import (
 	"os"
 
+	"iulianpascalau/level-db-copy-go/process"
+
 	logger "github.com/multiversx/mx-chain-logger-go"
 	"github.com/urfave/cli"
 )
@@ -82,5 +84,22 @@ func copyProcess(ctx *cli.Context) error {
 		"from", ctx.GlobalString(sourceDir.Name),
 		"to", ctx.GlobalString(destinationDir.Name))
 
-	return nil
+	dirHandler, err := process.NewDirectoriesHandler(
+		ctx.GlobalString(sourceDir.Name),
+		ctx.GlobalString(destinationDir.Name),
+	)
+	if err != nil {
+		return err
+	}
+
+	dbCopyHandler, err := process.NewDataCopyHandler(
+		dirHandler,
+		process.NewDBWrapper(),
+		process.NewDBWrapper(),
+	)
+	if err != nil {
+		return err
+	}
+
+	return dbCopyHandler.Process()
 }
