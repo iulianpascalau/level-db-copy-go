@@ -10,22 +10,37 @@ import (
 func TestNewDBWrapper(t *testing.T) {
 	t.Parallel()
 
+	wrapper := NewDBWrapper()
+	assert.NotNil(t, wrapper)
+}
+
+func TestDbWrapper_Open(t *testing.T) {
 	t.Run("path error should error", func(t *testing.T) {
 		t.Parallel()
 
-		wrapper, err := NewDBWrapper("/root/")
-		assert.Nil(t, wrapper)
+		wrapper := NewDBWrapper()
+		err := wrapper.Open("/root/")
 		assert.NotNil(t, err)
 		assert.Contains(t, err.Error(), "permission denied for path /root/")
 	})
 	t.Run("should work", func(t *testing.T) {
 		t.Parallel()
 
-		wrapper, err := NewDBWrapper(t.TempDir())
-		assert.NotNil(t, wrapper)
+		wrapper := NewDBWrapper()
+		err := wrapper.Open(t.TempDir())
 		assert.Nil(t, err)
 
 		_ = wrapper.Close()
+	})
+	t.Run("double open should not be allowed", func(t *testing.T) {
+		t.Parallel()
+
+		wrapper := NewDBWrapper()
+		err := wrapper.Open(t.TempDir())
+		assert.Nil(t, err)
+
+		err = wrapper.Open(t.TempDir())
+		assert.Equal(t, errInnerDBIsNotClosed, err)
 	})
 }
 
@@ -42,68 +57,90 @@ func TestDbWrapper_IsInterfaceNil(t *testing.T) {
 func TestDbWrapper_GetPutClose(t *testing.T) {
 	t.Parallel()
 
-	wrapper, _ := NewDBWrapper(t.TempDir())
+	wrapper := NewDBWrapper()
 
-	wrapper.RangeKeys(func(key []byte, val []byte) bool {
-		assert.Fail(t, "should have been an empty storage here")
-
-		return false
+	t.Run("Put in an unopened DB should error", func(t *testing.T) {
+		err := wrapper.Put([]byte("key1"), []byte("val1"))
+		assert.Equal(t, errInnerDBIsNotOpened, err)
 	})
+	t.Run("Get from an unopened DB should error", func(t *testing.T) {
+		value, err := wrapper.Get([]byte("key1"))
+		assert.Equal(t, errInnerDBIsNotOpened, err)
+		assert.Nil(t, value)
+	})
+	t.Run("should work", func(t *testing.T) {
+		_ = wrapper.Open(t.TempDir())
 
-	err := wrapper.Put([]byte("key1"), []byte("value1"))
-	assert.Nil(t, err)
+		wrapper.RangeKeys(func(key []byte, val []byte) bool {
+			assert.Fail(t, "should have been an empty storage here")
 
-	err = wrapper.Put([]byte("key2"), []byte("value2"))
-	assert.Nil(t, err)
+			return false
+		})
 
-	// we need this sleep to put the data inside the files
-	time.Sleep(time.Second * 3)
+		err := wrapper.Put([]byte("key1"), []byte("value1"))
+		assert.Nil(t, err)
 
-	recoveredValue, err := wrapper.Get([]byte("key1"))
-	assert.Nil(t, err)
-	assert.Equal(t, "value1", string(recoveredValue))
+		err = wrapper.Put([]byte("key2"), []byte("value2"))
+		assert.Nil(t, err)
 
-	recoveredValue, err = wrapper.Get([]byte("key2"))
-	assert.Nil(t, err)
-	assert.Equal(t, "value2", string(recoveredValue))
+		// we need this sleep to put the data inside the files
+		time.Sleep(time.Second * 3)
 
-	err = wrapper.Close()
-	assert.Nil(t, err)
+		recoveredValue, err := wrapper.Get([]byte("key1"))
+		assert.Nil(t, err)
+		assert.Equal(t, "value1", string(recoveredValue))
+
+		recoveredValue, err = wrapper.Get([]byte("key2"))
+		assert.Nil(t, err)
+		assert.Equal(t, "value2", string(recoveredValue))
+
+		err = wrapper.Close()
+		assert.Nil(t, err)
+	})
 }
 
 func TestDbWrapper_PutRangeKeys(t *testing.T) {
 	t.Parallel()
 
-	wrapper, _ := NewDBWrapper(t.TempDir())
+	wrapper := NewDBWrapper()
+	t.Run("RangeKeys should not call handler if the DB is not opened", func(t *testing.T) {
+		wrapper.RangeKeys(func(key []byte, val []byte) bool {
+			assert.Fail(t, "should have not called the handler")
 
-	wrapper.RangeKeys(func(key []byte, val []byte) bool {
-		assert.Fail(t, "should have been an empty storage here")
+			return false
+		})
 
-		return false
+		time.Sleep(time.Second)
 	})
+	t.Run("should work", func(t *testing.T) {
+		_ = wrapper.Open(t.TempDir())
 
-	time.Sleep(time.Second)
+		wrapper.RangeKeys(func(key []byte, val []byte) bool {
+			assert.Fail(t, "should have been an empty storage here")
 
-	err := wrapper.Put([]byte("key1"), []byte("value1"))
-	assert.Nil(t, err)
+			return false
+		})
 
-	err = wrapper.Put([]byte("key2"), []byte("value2"))
-	assert.Nil(t, err)
+		err := wrapper.Put([]byte("key1"), []byte("value1"))
+		assert.Nil(t, err)
 
-	time.Sleep(time.Second * 3)
+		err = wrapper.Put([]byte("key2"), []byte("value2"))
+		assert.Nil(t, err)
 
-	rangeKeys := make(map[string]string, 2)
-	wrapper.RangeKeys(func(key []byte, val []byte) bool {
-		rangeKeys[string(key)] = string(val)
+		time.Sleep(time.Second * 3)
 
-		return true
+		rangeKeys := make(map[string]string, 2)
+		wrapper.RangeKeys(func(key []byte, val []byte) bool {
+			rangeKeys[string(key)] = string(val)
+
+			return true
+		})
+		expectedRangeKeys := map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+		}
+		assert.Equal(t, expectedRangeKeys, rangeKeys)
+
+		_ = wrapper.Close()
 	})
-	expectedRangeKeys := map[string]string{
-		"key1": "value1",
-		"key2": "value2",
-	}
-	time.Sleep(time.Second * 3)
-	assert.Equal(t, expectedRangeKeys, rangeKeys)
-
-	_ = wrapper.Close()
 }
