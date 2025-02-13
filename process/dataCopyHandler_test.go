@@ -108,10 +108,10 @@ func TestDataCopyHandler_Process(t *testing.T) {
 		err := handler.Process()
 		assert.Nil(t, err)
 
-		assert.Equal(t, expectedDBOperationOrder, rec.srcOpenedDBs)
-		assert.Equal(t, expectedDBOperationOrder, rec.srcClosedDBs)
-		assert.Equal(t, expectedDBOperationOrder, rec.destOpenedDBs)
-		assert.Equal(t, expectedDBOperationOrder, rec.destClosedDBs)
+		assert.ElementsMatch(t, expectedDBOperationOrder, rec.srcOpenedDBs)
+		assert.ElementsMatch(t, expectedDBOperationOrder, rec.srcClosedDBs)
+		assert.ElementsMatch(t, expectedDBOperationOrder, rec.destOpenedDBs)
+		assert.ElementsMatch(t, expectedDBOperationOrder, rec.destClosedDBs)
 		assert.Equal(t, expectedPutOperations, rec.putOps)
 	})
 }

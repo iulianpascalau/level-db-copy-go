@@ -1,4 +1,4 @@
-package level_db_copy
+package main
 
 import (
 	"os"
